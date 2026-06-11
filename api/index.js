@@ -8,6 +8,14 @@ const DISCONNECT_TIMEOUT = 30000;
 const CREATE_ROOM_PASSWORD = process.env.CREATE_ROOM_PASSWORD || '';
 
 async function ensureRoom(code) {
+  if (roomStore.hasDurableStorage()) {
+    const data = await roomStore.load(code);
+    if (data) {
+      gameManager.restoreRoom(data);
+      return data;
+    }
+  }
+
   let room = gameManager.getRoom(code);
   if (!room) {
     const data = await roomStore.load(code);

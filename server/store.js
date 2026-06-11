@@ -52,8 +52,6 @@ class RoomStore {
   }
 
   async load(code) {
-    const cached = this._cache.get(code);
-    if (cached) return cached;
     if (hasSupabase) {
       const rows = await this._supabaseRequest(`?code=eq.${encodeURIComponent(code)}&select=data&limit=1`);
       if (rows && rows[0] && rows[0].data) {
@@ -62,6 +60,7 @@ class RoomStore {
         return room;
       }
     }
+
     if (kv) {
       const raw = await kv.get(this._key(code));
       if (raw) {
@@ -70,6 +69,9 @@ class RoomStore {
         return room;
       }
     }
+
+    const cached = this._cache.get(code);
+    if (cached) return cached;
     return null;
   }
 
