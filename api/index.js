@@ -1,3 +1,4 @@
+require('../server/env');
 const GameManager = require('../server/game');
 const roomStore = require('../server/store');
 require('../server/db');

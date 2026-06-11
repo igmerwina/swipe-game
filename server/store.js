@@ -2,8 +2,15 @@ const crypto = require('crypto');
 
 const ROOM_TTL = 7200;
 const SUPABASE_TABLE = process.env.SUPABASE_ROOMS_TABLE || 'rooms';
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_URL = normalizeSupabaseUrl(process.env.SUPABASE_URL || '');
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+
+function normalizeSupabaseUrl(url) {
+  return url
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/rest\/v1$/i, '');
+}
 
 let kv;
 try {
@@ -107,8 +114,9 @@ class RoomStore {
       throw new Error(`Supabase room store failed: ${res.status} ${text}`);
     }
 
-    if (res.status === 204) return null;
-    return res.json();
+    const text = await res.text();
+    if (!text) return null;
+    return JSON.parse(text);
   }
 
   _serialize(room) {
