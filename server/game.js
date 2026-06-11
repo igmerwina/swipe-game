@@ -298,6 +298,10 @@ class GameManager {
 
     return { state: room.state, players, remaining, progress };
   }
+
+  restoreRoom(room) {
+    this.rooms.set(room.code, room);
+  }
 }
 
 module.exports = GameManager;
