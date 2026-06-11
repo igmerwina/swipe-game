@@ -28,6 +28,7 @@
       <input class="input" id="input-code" placeholder="Room Code" maxlength="4" style="text-transform:uppercase;letter-spacing:6px;font-weight:900;text-align:center;font-size:22px">
       <input class="input" id="input-name" placeholder="Your Nickname" maxlength="20">
       <button class="btn btn-secondary" id="btn-join">🎮 Join</button>
+      <div class="loading-status" id="join-status"></div>
     </div>
     <div class="mt-auto" style="padding-bottom:20px">
       <div style="font-size:11px;color:var(--text-muted);opacity:0.5">📱 Make sure you're on the same network</div>
@@ -44,6 +45,7 @@
     <div class="w-full flex flex-col gap-md" style="max-width:340px">
       <input class="input" id="input-admin-password" placeholder="Create Room Password" type="password" autocomplete="current-password">
       <button class="btn btn-primary" id="btn-create">🚀 Create Room</button>
+      <div class="loading-status" id="create-status"></div>
     </div>
     <div class="mt-auto" style="padding-bottom:20px">
       <div style="font-size:11px;color:var(--text-muted);opacity:0.5">Set CREATE_ROOM_PASSWORD in your environment</div>
@@ -81,6 +83,7 @@
           <input type="file" accept="image/png" multiple id="image-input">
           <div class="image-thumbs" id="image-thumbs"></div>
           <div class="image-count" id="image-count"></div>
+          <div class="loading-status" id="upload-status"></div>
         </div>
 
         <div class="slider-group">
@@ -114,7 +117,7 @@
   <div id="view-player-waiting" class="view page center">
     <div class="waiting-animation">🎯</div>
     <div class="waiting-text">Get ready!</div>
-    <div class="waiting-sub" style="margin-top:4px">Waiting for host to start...</div>
+    <div class="waiting-sub" style="margin-top:4px">Waiting for host to start<span class="loading-dots"></span></div>
     <div style="margin-top:20px;padding:12px 20px;background:var(--bg-card-solid);border-radius:var(--radius);border:1px solid var(--border)">
       <div style="font-size:12px;color:var(--text-muted);font-weight:700;letter-spacing:2px;text-transform:uppercase">Room</div>
       <div style="font-size:36px;font-weight:900;letter-spacing:6px" id="waiting-code">----</div>

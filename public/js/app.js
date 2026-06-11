@@ -55,6 +55,22 @@ function showView(viewId) {
   currentView = viewId;
 }
 
+function setButtonLoading(buttonId, loading, text) {
+  const btn = $(buttonId);
+  if (!btn) return;
+  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+  btn.disabled = loading;
+  btn.classList.toggle('loading', loading);
+  btn.textContent = loading ? text : btn.dataset.label;
+}
+
+function setStatus(id, text) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.classList.toggle('active', Boolean(text));
+}
+
 async function api(method, path, data) {
   const opts = { method };
   if (data) {
@@ -406,6 +422,8 @@ function initHome() {
   playerName = null;
   adminToken = null;
   lastEventId = 0;
+  setButtonLoading('btn-join', false);
+  setStatus('join-status', '');
 
   initJoinForm();
 }
@@ -420,9 +438,13 @@ function initAdminEntry() {
   playerName = null;
   adminToken = null;
   lastEventId = 0;
+  setButtonLoading('btn-create', false);
+  setStatus('create-status', '');
 
   $('btn-create').onclick = async () => {
     const password = $('input-admin-password').value;
+    setButtonLoading('btn-create', true, 'Creating...');
+    setStatus('create-status', 'Preparing room');
     try {
       const data = await api('POST', 'create-room', { password });
       roomCode = data.roomCode;
@@ -434,6 +456,8 @@ function initAdminEntry() {
       initAdminLobby();
     } catch (err) {
       alert(err.message);
+      setButtonLoading('btn-create', false);
+      setStatus('create-status', '');
     }
   };
 
@@ -446,6 +470,8 @@ function initJoinForm() {
     const name = $('input-name').value.trim();
     if (!code) { $('input-code').focus(); return; }
     if (!name) { $('input-name').focus(); return; }
+    setButtonLoading('btn-join', true, 'Joining...');
+    setStatus('join-status', 'Finding room');
     try {
       const data = await api('POST', 'join-room', { roomCode: code, nickname: name });
       playerId = data.playerId;
@@ -457,6 +483,8 @@ function initJoinForm() {
       showPlayerWaiting();
     } catch (err) {
       alert(err.message);
+      setButtonLoading('btn-join', false);
+      setStatus('join-status', '');
     }
   };
 
@@ -485,11 +513,13 @@ function initAdminLobby() {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
       syncStartButton(true);
+      setStatus('upload-status', 'Processing images');
 
       if (files.some(f => f.type !== 'image/png')) {
         alert('Only PNG images are allowed!');
         e.target.value = '';
         syncStartButton();
+        setStatus('upload-status', '');
         return;
       }
 
@@ -513,13 +543,16 @@ function initAdminLobby() {
 
       uploadedImages = imageDataUrls;
       try {
+        setStatus('upload-status', 'Saving images');
         await api('POST', 'set-images', { roomCode, adminToken, images: imageDataUrls });
         showImageThumbs(imageDataUrls);
         syncStartButton();
+        setStatus('upload-status', '');
       } catch (err) {
         alert(err.message);
         uploadedImages = [];
         syncStartButton();
+        setStatus('upload-status', '');
       }
     };
   }
@@ -531,7 +564,7 @@ function initAdminLobby() {
   };
 
   $('btn-start').onclick = async () => {
-    $('btn-start').disabled = true;
+    setButtonLoading('btn-start', true, 'Starting...');
     try {
       const data = await api('POST', 'start-game', { roomCode, adminToken });
       gameActive = true;
@@ -540,7 +573,8 @@ function initAdminLobby() {
       $('admin-timer').className = 'timer';
     } catch (err) {
       alert(err.message);
-      $('btn-start').disabled = false;
+      setButtonLoading('btn-start', false);
+      syncStartButton();
     }
   };
 
