@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SwipeRush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
+</head>
+<body>
+
+<div id="app">
+
+  <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">☀️</button>
+
+  <!-- ===== HOME ===== -->
+  <div id="view-home" class="view page center active">
+    <div class="mb-auto"></div>
+    <div style="font-size:48px;margin-bottom:4px">🏁</div>
+    <div class="logo">SwipeRush</div>
+    <div class="logo-sub">Swipe &amp; Reveal</div>
+
+    <div class="w-full flex flex-col gap-md" style="max-width:340px">
+      <button class="btn btn-primary" id="btn-create">🚀 Create Room</button>
+
+      <div class="divider">or join</div>
+
+      <input class="input" id="input-code" placeholder="Room Code" maxlength="4" style="text-transform:uppercase;letter-spacing:6px;font-weight:900;text-align:center;font-size:22px">
+      <input class="input" id="input-name" placeholder="Your Nickname" maxlength="20">
+      <button class="btn btn-secondary" id="btn-join">🎮 Join</button>
+    </div>
+    <div class="mt-auto" style="padding-bottom:20px">
+      <div style="font-size:11px;color:var(--text-muted);opacity:0.5">📱 Make sure you're on the same network</div>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN LOBBY ===== -->
+  <div id="view-admin-lobby" class="view page">
+    <div class="flex items-center justify-center" style="padding:4px 0">
+      <span class="logo" style="font-size:20px">SwipeRush</span>
+    </div>
+
+    <div class="text-center">
+      <div class="room-code-label">📋 Share this code</div>
+      <div class="room-code-wrap">
+        <div class="room-code" id="admin-room-code">ABCD</div>
+      </div>
+    </div>
+
+    <div class="flex-1 min-h-0 overflow-auto flex flex-col gap-md">
+      <div class="card flex flex-col gap-sm">
+        <div style="font-size:13px;color:var(--text-muted);font-weight:700;letter-spacing:1px">
+          👥 Players <span class="player-count-badge" id="player-count">(0)</span>
+        </div>
+        <ul class="player-list" id="player-list">
+          <li style="text-align:center;padding:16px;color:var(--text-muted);font-size:14px;font-weight:600">Waiting for players to join...</li>
+        </ul>
+      </div>
+
+      <div class="card flex flex-col gap-md">
+        <div class="image-upload" id="image-upload">
+          <div class="image-upload-icon">🖼️</div>
+          <div class="image-upload-label" id="upload-label">Tap to choose PNG images</div>
+          <div class="image-upload-label" style="font-size:11px;opacity:0.5">max 5 images, PNG only</div>
+          <input type="file" accept="image/png" multiple id="image-input">
+          <div class="image-thumbs" id="image-thumbs"></div>
+          <div class="image-count" id="image-count"></div>
+        </div>
+
+        <div class="slider-group">
+          <label>⏱️ Time Limit</label>
+          <div class="slider-row">
+            <input type="range" id="timer-slider" min="15" max="120" value="60" step="5">
+            <span class="slider-value" id="timer-value">60s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-success" id="btn-start" disabled>🏁 Start Game</button>
+  </div>
+
+  <!-- ===== ADMIN PLAYING ===== -->
+  <div id="view-admin-playing" class="view page">
+    <div class="flex items-center justify-center" style="padding:4px 0">
+      <span class="logo" style="font-size:22px">SwipeRush</span>
+    </div>
+    <div class="admin-watching flex-1">
+      <div>🏎️</div>
+      <div class="timer" id="admin-timer">60</div>
+      <p style="font-size:18px;font-weight:800">⚡ Race in progress!</p>
+      <p style="font-size:13px;opacity:0.5">Waiting for players to finish...</p>
+    </div>
+    <button class="btn btn-accent" id="btn-finish-game">🛑 Finish Game Early</button>
+  </div>
+
+  <!-- ===== PLAYER WAITING ===== -->
+  <div id="view-player-waiting" class="view page center">
+    <div class="waiting-animation">🎯</div>
+    <div class="waiting-text">Get ready!</div>
+    <div class="waiting-sub" style="margin-top:4px">Waiting for host to start...</div>
+    <div style="margin-top:20px;padding:12px 20px;background:var(--bg-card-solid);border-radius:var(--radius);border:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text-muted);font-weight:700;letter-spacing:2px;text-transform:uppercase">Room</div>
+      <div style="font-size:36px;font-weight:900;letter-spacing:6px" id="waiting-code">----</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">You're in as <strong style="color:var(--primary)" id="waiting-name"></strong></div>
+    </div>
+  </div>
+
+  <!-- ===== GAME ===== -->
+  <div id="view-game" class="view page" style="padding:10px 12px 8px">
+    <div class="timer-bar">
+      <span class="timer-icon">⏱️</span>
+      <span class="timer" id="game-timer">--</span>
+    </div>
+
+    <div class="canvas-stack" id="canvas-stack">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="scratchCanvas"></canvas>
+      <div class="swipe-hint">👆 SWIPE TO REVEAL</div>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-label" id="progress-label">✨ 0%</div>
+    </div>
+  </div>
+
+  <!-- ===== RESULTS ===== -->
+  <div id="view-results" class="view page" style="padding:10px 16px">
+    <div class="flex items-center justify-center" style="padding:4px 0">
+      <span class="logo" style="font-size:20px">SwipeRush</span>
+    </div>
+
+    <div class="flex-1 flex flex-col podium-section">
+      <div class="podium-title">🏆 Results 🏆</div>
+
+      <div id="podium-container" class="podium">
+        <div class="podium-item" id="podium-2" style="display:none">
+          <div class="podium-rank">2nd</div>
+          <div class="podium-name" id="p2-name">---</div>
+          <div class="podium-bar silver" id="p2-bar"></div>
+        </div>
+        <div class="podium-item" id="podium-1" style="display:none">
+          <div class="podium-crown">👑</div>
+          <div class="podium-rank">1st</div>
+          <div class="podium-name" id="p1-name">---</div>
+          <div class="podium-bar gold" id="p1-bar"></div>
+        </div>
+        <div class="podium-item" id="podium-3" style="display:none">
+          <div class="podium-rank">3rd</div>
+          <div class="podium-name" id="p3-name">---</div>
+          <div class="podium-bar bronze" id="p3-bar"></div>
+        </div>
+      </div>
+
+      <div class="results-list" id="results-list"></div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-play-again" style="display:none">🔄 Play Again</button>
+    <button class="btn btn-secondary" id="btn-home">🏠 Home</button>
+  </div>
+
+  <!-- ===== CONFETTI CONTAINER ===== -->
+  <div class="confetti-container" id="confetti-container"></div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
