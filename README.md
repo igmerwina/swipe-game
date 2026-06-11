@@ -37,14 +37,42 @@ npm start
 
 Open `http://localhost:3000` on your phone or desktop.
 
-## Deploy on Vercel
+## Deploy
+
+### Option 1: Local server (easiest for parties)
+
+```sh
+npm install
+npm start
+```
+
+Share your local IP with players on the same Wi-Fi.
+
+### Option 2: Frontend on Vercel + Backend on Railway
+
+**Backend** (on [Railway](https://railway.app), [Render](https://render.com), or any Node.js host):
+
+```sh
+npm install
+node server/index.js
+```
+
+Set `PORT=3000` and deploy the entire repo as a Node.js app.
+
+**Frontend** (on Vercel):
 
 ```sh
 npm i -g vercel
 vercel
 ```
 
-The server uses polling transport (required for serverless functions).
+Then in `public/index.html`, add before the closing `</head>`:
+
+```html
+<script>window.__SWIPE_SERVER__ = 'https://your-backend-url.railway.app';</script>
+```
+
+Replace the URL with your deployed backend.
 
 ## Tech Stack
 

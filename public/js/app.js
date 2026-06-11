@@ -314,7 +314,8 @@ class ScratchEngine {
 //  SOCKET SETUP
 // ============================================
 function connectSocket() {
-  socket = io();
+  const serverUrl = window.__SWIPE_SERVER__ || undefined;
+  socket = io(serverUrl, { transports: ['websocket', 'polling'] });
 
   socket.on('room-created', ({ code }) => {
     roomCode = code;
