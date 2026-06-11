@@ -38,6 +38,8 @@ npm start
 
 Open `http://localhost:3000` on your phone or desktop.
 
+For local Supabase testing, copy `.env.example` to `.env` and fill in your Supabase values. Keep `.env` local only; it is ignored by Git.
+
 ## Deploy on Vercel
 
 ```sh
