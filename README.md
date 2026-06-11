@@ -29,6 +29,33 @@ Built with **Node.js + Express** and a vanilla HTML/CSS/JS frontend. It has no b
 4. **Swipe** to scratch off the blur and reveal the image
 5. **First to 95%** wins! Results show on a podium with confetti 🎉
 
+## Application Flow
+
+```mermaid
+flowchart TD
+  Host["Host browser"] -->|POST /api/create-room| API["Vercel API handler"]
+  API -->|Create room + admin token| Store["Room store"]
+  Store -->|Supabase / Vercel KV / memory| API
+  API -->|Room code + admin token| Host
+
+  Players["Player browsers"] -->|POST /api/join-room| API
+  API -->|Load room + add players| Store
+  API -->|Player IDs| Players
+
+  Host -->|POST /api/set-images| API
+  Host -->|POST /api/start-game| API
+  API -->|Save playing state + game-started event| Store
+
+  Players -->|GET /api/poll| API
+  API -->|game-started event + image data| Players
+  Players -->|POST /api/swipe| API
+  API -->|Update progress + check winner| Store
+  Host -->|GET /api/poll| API
+  API -->|Players, timer, progress, results| Host
+```
+
+The frontend never connects directly to Supabase or KV. Browsers only call `/api/*`; the server-side API reads and writes room state using the configured store.
+
 ## Run Locally
 
 ```sh
