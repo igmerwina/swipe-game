@@ -17,11 +17,17 @@ class GameManager {
     return code;
   }
 
-  createRoom(adminSocketId) {
+  generateToken() {
+    const b = () => Math.random().toString(36).substring(2, 10);
+    return b() + b();
+  }
+
+  createRoom() {
     const code = this.generateCode();
+    const adminToken = this.generateToken();
     const room = {
       code,
-      adminSocketId,
+      adminToken,
       state: 'waiting',
       images: [],
       timeLimit: 60,
@@ -29,19 +35,36 @@ class GameManager {
       gridSize: 30,
       winner: null,
       startTime: null,
-      timerInterval: null,
       createdAt: Date.now(),
+      events: [],
+      eventId: 0,
     };
     this.rooms.set(code, room);
     saveRoom(code, 'waiting');
-    return code;
+    this.addEvent(code, 'room-created', {});
+    return { code, adminToken };
   }
 
   getRoom(code) {
     return this.rooms.get(code);
   }
 
-  joinRoom(code, playerSocketId, playerName) {
+  addEvent(roomCode, type, data) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const event = { id: ++room.eventId, type, data, ts: Date.now() };
+    room.events.push(event);
+    if (room.events.length > 200) room.events.splice(0, 100);
+    return event;
+  }
+
+  getEventsSince(roomCode, lastId) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return [];
+    return room.events.filter(e => e.id > lastId);
+  }
+
+  joinRoom(code, playerName) {
     const room = this.rooms.get(code);
     if (!room) return { error: 'Room not found' };
     if (room.state !== 'waiting') return { error: 'Game already started' };
@@ -54,28 +77,36 @@ class GameManager {
       name = `${playerName.slice(0, 17)}${suffix}`;
     }
 
+    const playerId = this.generateToken();
     const player = {
-      id: playerSocketId,
+      id: playerId,
       name,
       progress: 0,
       grid: new Array(room.gridSize * room.gridSize).fill(false),
       finishedAt: null,
       joinedAt: Date.now(),
+      lastPollAt: Date.now(),
     };
-    room.players.set(playerSocketId, player);
-    return { player: { id: playerSocketId, name } };
+    room.players.set(playerId, player);
+    this.addEvent(code, 'player-joined', { id: playerId, name });
+    return { player: { id: playerId, name } };
   }
 
   removePlayer(roomCode, playerId) {
     const room = this.rooms.get(roomCode);
     if (!room) return;
-    room.players.delete(playerId);
+    const player = room.players.get(playerId);
+    if (player) {
+      this.addEvent(roomCode, 'player-left', { id: playerId, name: player.name });
+      room.players.delete(playerId);
+    }
   }
 
   setImages(roomCode, images) {
     const room = this.rooms.get(roomCode);
     if (!room) return false;
     room.images = images.slice(0, 5);
+    this.addEvent(roomCode, 'images-set', { count: room.images.length });
     return true;
   }
 
@@ -104,7 +135,9 @@ class GameManager {
     }
 
     const randomIndex = Math.floor(Math.random() * room.images.length);
-    return { success: true, timeLimit: room.timeLimit, imageData: room.images[randomIndex] };
+    const imageData = room.images[randomIndex];
+    this.addEvent(roomCode, 'game-started', { timeLimit: room.timeLimit, imageData });
+    return { success: true, timeLimit: room.timeLimit, imageData };
   }
 
   processStroke(roomCode, playerId, strokePoints) {
@@ -113,6 +146,10 @@ class GameManager {
 
     const player = room.players.get(playerId);
     if (!player || player.finishedAt) return null;
+
+    if (Date.now() - room.startTime > room.timeLimit * 1000) {
+      return null;
+    }
 
     const gridSize = room.gridSize;
     const cells = new Set();
@@ -188,11 +225,6 @@ class GameManager {
     room.state = 'finished';
     room.winner = winnerId;
 
-    if (room.timerInterval) {
-      clearInterval(room.timerInterval);
-      room.timerInterval = null;
-    }
-
     const sorted = Array.from(room.players.values())
       .sort((a, b) => {
         if (Math.abs(a.progress - b.progress) > 0.001) {
@@ -210,6 +242,7 @@ class GameManager {
 
     saveRoom(roomCode, 'finished');
     saveResults(roomCode, results);
+    this.addEvent(roomCode, 'game-over', { results });
 
     return results;
   }
@@ -231,6 +264,7 @@ class GameManager {
       player.progress = 0;
       player.finishedAt = null;
     }
+    this.addEvent(roomCode, 'room-reset', {});
     return true;
   }
 
@@ -238,10 +272,31 @@ class GameManager {
     const now = Date.now();
     for (const [code, room] of this.rooms) {
       if (now - room.createdAt > 3600000) {
-        if (room.timerInterval) clearInterval(room.timerInterval);
         this.rooms.delete(code);
       }
     }
+  }
+
+  getPollState(roomCode, playerId) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+
+    let remaining = null;
+    if (room.state === 'playing' && room.startTime) {
+      const elapsed = (Date.now() - room.startTime) / 1000;
+      remaining = Math.max(0, Math.ceil(room.timeLimit - elapsed));
+    }
+
+    const player = room.players.get(playerId);
+    const progress = player ? player.progress : 0;
+
+    const players = Array.from(room.players.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      progress: p.progress,
+    }));
+
+    return { state: room.state, players, remaining, progress };
   }
 }
 

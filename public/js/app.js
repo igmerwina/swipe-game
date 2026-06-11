@@ -1,21 +1,17 @@
-// ============================================
-// SwipeRush — Client Application
-// ============================================
-
 const GRID_SIZE = 30;
 const REVEAL_THRESHOLD = 0.95;
-
 const STORAGE_KEY = 'swiperush-theme';
+const POLL_INTERVAL = 1000;
 
 function initTheme() {
   const saved = localStorage.getItem(STORAGE_KEY);
   const btn = $('theme-toggle');
   if (saved === 'dark') {
     document.documentElement.removeAttribute('data-theme');
-    btn.textContent = '🌙';
+    btn.textContent = '\u{1F319}';
   } else {
     document.documentElement.setAttribute('data-theme', 'light');
-    btn.textContent = '☀️';
+    btn.textContent = '\u{2600}\u{FE0F}';
   }
 }
 
@@ -24,28 +20,32 @@ function toggleTheme() {
   const btn = $('theme-toggle');
   if (html.getAttribute('data-theme') === 'light') {
     html.removeAttribute('data-theme');
-    btn.textContent = '🌙';
+    btn.textContent = '\u{1F319}';
     localStorage.setItem(STORAGE_KEY, 'dark');
   } else {
     html.setAttribute('data-theme', 'light');
-    btn.textContent = '☀️';
+    btn.textContent = '\u{2600}\u{FE0F}';
     localStorage.setItem(STORAGE_KEY, 'light');
   }
 }
 
-let socket = null;
+const $ = id => document.getElementById(id);
+
 let roomCode = null;
 let playerId = null;
 let playerName = null;
+let adminToken = null;
 let isAdmin = false;
-let currentView = '';
 let gameActive = false;
+let currentView = '';
+let lastEventId = 0;
+let pollTimer = null;
 let scratchEngine = null;
-let flushInterval = null;
+let localTimer = null;
 let _adminInitialized = false;
 let uploadedImages = [];
 
-const $ = id => document.getElementById(id);
+const API_BASE = window.__SWIPE_API__ || '/api';
 
 function showView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -54,12 +54,99 @@ function showView(viewId) {
   currentView = viewId;
 }
 
-// ---- Utility ----
+async function api(method, path, data) {
+  const opts = { method };
+  if (data) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(data);
+  }
+  const res = await fetch(`${API_BASE}/${path}`, opts);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Request failed');
+  return json;
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(pollGameState, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollGameState() {
+  if (!roomCode) return;
+  try {
+    const pid = playerId || '';
+    const state = await api('GET', `poll?roomCode=${roomCode}&playerId=${pid}&since=${lastEventId}`);
+
+    if (state.events && state.events.length > 0) {
+      lastEventId = state.events[state.events.length - 1].id;
+      for (const ev of state.events) {
+        handleGameEvent(ev);
+      }
+    }
+
+    if (state.state === 'playing' && state.remaining !== null && state.remaining !== undefined) {
+      updateTimer(state.remaining);
+    }
+
+    if (isAdmin && state.players) {
+      updatePlayerList(state.players);
+    }
+
+    if (isAdmin && state.players && currentView === 'admin-playing') {
+      updateAdminProgress(state.players);
+    }
+
+    if (!isAdmin && currentView === 'game') {
+      $('progress-fill').style.width = `${Math.min(Math.round(state.progress * 100), 100)}%`;
+      $('progress-label').textContent = `\u2728 ${Math.round(state.progress * 100)}%`;
+      if (scratchEngine) scratchEngine.progress = state.progress;
+    }
+  } catch (err) {
+    if (err.message !== 'Room not found') {
+      console.error('Poll error:', err);
+    }
+  }
+}
+
+function handleGameEvent(event) {
+  switch (event.type) {
+    case 'game-started': {
+      const d = event.data;
+      if (!isAdmin) {
+        showView('game');
+        initScratch(d.imageData);
+      } else {
+        showView('admin-playing');
+      }
+      $('game-timer').textContent = d.timeLimit;
+      $('game-timer').className = 'timer';
+      $('admin-timer').textContent = d.timeLimit;
+      $('admin-timer').className = 'timer';
+      if (!isAdmin) $('progress-fill').style.width = '0%';
+      if (!isAdmin) $('progress-label').textContent = '\u2728 0%';
+      gameActive = true;
+      break;
+    }
+    case 'game-over': {
+      endGame(event.data.results);
+      break;
+    }
+    case 'room-reset': {
+      resetForNewGame();
+      break;
+    }
+  }
+}
+
 function resizeImage(img, maxDim) {
   let w = img.width, h = img.height;
   if (w > maxDim || h > maxDim) {
-    const scale = maxDim / Math.max(w, h);
-    w = Math.floor(w * scale); h = Math.floor(h * scale);
+    const s = maxDim / Math.max(w, h);
+    w = Math.floor(w * s); h = Math.floor(h * s);
   }
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -76,7 +163,6 @@ function getAvatarColor(index) {
   return AVATAR_COLORS[index % AVATAR_COLORS.length];
 }
 
-// ---- Confetti ----
 function spawnConfetti() {
   const container = $('confetti-container');
   container.innerHTML = '';
@@ -96,9 +182,6 @@ function spawnConfetti() {
   setTimeout(() => container.innerHTML = '', 5000);
 }
 
-// ============================================
-//  SCRATCH ENGINE
-// ============================================
 class ScratchEngine {
   constructor(baseCanvasId, scratchCanvasId, imageSrc) {
     this.baseCanvas = $(baseCanvasId);
@@ -172,11 +255,8 @@ class ScratchEngine {
     this.scratchCanvas.style.left = `${(cw - displayW) / 2}px`;
     this.scratchCanvas.style.top = `${(ch - displayH) / 2}px`;
 
-    // Draw base canvas (clear image)
     this.baseCtx.drawImage(img, 0, 0, w, h);
 
-    // Create blurred overlay using offscreen canvas technique
-    // This works reliably across all browsers
     const blurFactor = 0.05;
     const smallW = Math.max(2, Math.floor(w * blurFactor));
     const smallH = Math.max(2, Math.floor(h * blurFactor));
@@ -234,14 +314,20 @@ class ScratchEngine {
   _addToBatch(x, y) {
     const n = this.getNormalized(x, y);
     this.batch.push(n);
-    if (this.batch.length >= 30) this.flush();
   }
 
-  flush() {
+  async flush() {
     if (this.batch.length === 0) return;
     const points = this.batch.splice(0);
-    if (socket && roomCode && gameActive) {
-      socket.emit('swipe-stroke', { roomCode, strokePoints: points });
+    if (roomCode && playerId && gameActive) {
+      try {
+        const result = await api('POST', 'swipe', { roomCode, playerId, strokePoints: points });
+        if (result.progress !== undefined) {
+          this.progress = result.progress;
+          $('progress-fill').style.width = `${Math.min(Math.round(result.progress * 100), 100)}%`;
+          $('progress-label').textContent = `\u2728 ${Math.round(result.progress * 100)}%`;
+        }
+      } catch {}
     }
   }
 
@@ -267,7 +353,7 @@ class ScratchEngine {
     this.lastPoint = c;
   }
 
-  _onTouchEnd(e) {
+  _onTouchEnd() {
     this.isDrawing = false;
     this.lastPoint = null;
     this.flush();
@@ -291,14 +377,13 @@ class ScratchEngine {
     this.lastPoint = c;
   }
 
-  _onMouseUp(e) {
+  _onMouseUp() {
     this.isDrawing = false;
     this.lastPoint = null;
     this.flush();
   }
 
   destroy() {
-    if (this.flushInterval) clearInterval(this.flushInterval);
     this.scratchCanvas.removeEventListener('touchstart', this._onTouchStart);
     this.scratchCanvas.removeEventListener('touchmove', this._onTouchMove);
     this.scratchCanvas.removeEventListener('touchend', this._onTouchEnd);
@@ -310,87 +395,49 @@ class ScratchEngine {
   }
 }
 
-// ============================================
-//  SOCKET SETUP
-// ============================================
-function connectSocket() {
-  const serverUrl = window.__SWIPE_SERVER__ || undefined;
-  socket = io(serverUrl, { transports: ['websocket', 'polling'] });
-
-  socket.on('room-created', ({ code }) => {
-    roomCode = code;
-    isAdmin = true;
-    initAdminLobby();
-  });
-
-  socket.on('room-joined', ({ playerId: pid, playerName: pname, roomCode: rc }) => {
-    playerId = pid;
-    playerName = pname;
-    roomCode = rc;
-    showPlayerWaiting();
-  });
-
-  socket.on('error', ({ message }) => {
-    alert(message);
-  });
-
-  socket.on('player-list', ({ players }) => {
-    updatePlayerList(players);
-  });
-
-  socket.on('images-set', ({ count }) => {
-    $('btn-start').disabled = false;
-    const label = $('image-count');
-    if (count > 0) label.textContent = `📸 ${count}/5 images loaded`;
-  });
-
-  socket.on('game-started', ({ timeLimit, imageData }) => {
-    startGame(timeLimit, imageData);
-  });
-
-  socket.on('timer-tick', (remaining) => {
-    updateTimer(remaining);
-  });
-
-  socket.on('progress-update', ({ progress }) => {
-    updateProgress(progress);
-  });
-
-  socket.on('game-over', ({ results }) => {
-    endGame(results);
-  });
-
-  socket.on('room-reset', () => {
-    resetForNewGame();
-  });
-
-  socket.on('admin-disconnected', () => {
-    alert('Host disconnected. Game ended.');
-    resetToHome();
-  });
-}
-
-// ============================================
-//  HOME VIEW
-// ============================================
 function initHome() {
   showView('home');
+  stopPolling();
   gameActive = false;
   isAdmin = false;
   roomCode = null;
   playerId = null;
   playerName = null;
+  adminToken = null;
+  lastEventId = 0;
 
-  $('btn-create').onclick = () => {
-    socket.emit('create-room');
+  $('btn-create').onclick = async () => {
+    try {
+      const data = await api('POST', 'create-room');
+      roomCode = data.roomCode;
+      adminToken = data.adminToken;
+      isAdmin = true;
+      playerId = adminToken;
+      lastEventId = 0;
+      startPolling();
+      initAdminLobby();
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
-  $('btn-join').onclick = () => {
+  $('btn-join').onclick = async () => {
     const code = $('input-code').value.trim().toUpperCase();
     const name = $('input-name').value.trim();
     if (!code) { $('input-code').focus(); return; }
     if (!name) { $('input-name').focus(); return; }
-    socket.emit('join-room', { roomCode: code, nickname: name });
+    try {
+      const data = await api('POST', 'join-room', { roomCode: code, nickname: name });
+      playerId = data.playerId;
+      playerName = data.playerName;
+      roomCode = data.roomCode;
+      isAdmin = false;
+      lastEventId = 0;
+      startPolling();
+      showPlayerWaiting();
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   $('input-code').onkeydown = (e) => { if (e.key === 'Enter') $('btn-join').click(); };
@@ -400,19 +447,10 @@ function initHome() {
   };
 }
 
-// ============================================
-//  ADMIN LOBBY
-// ============================================
 function initAdminLobby() {
   showView('admin-lobby');
   $('admin-room-code').textContent = roomCode;
 
-  const uploadEl = document.getElementById('image-upload');
-  const fileInput = $('image-input');
-  const thumbsEl = $('image-thumbs');
-  const countEl = $('image-count');
-
-  // Re-display previously uploaded images if any
   if (uploadedImages.length > 0) {
     showImageThumbs(uploadedImages);
     $('btn-start').disabled = false;
@@ -421,15 +459,15 @@ function initAdminLobby() {
   if (!_adminInitialized) {
     _adminInitialized = true;
 
-    uploadEl.onclick = () => fileInput.click();
+    $('image-upload').onclick = () => $('image-input').click();
 
-    fileInput.onchange = (e) => {
+    $('image-input').onchange = async (e) => {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
       if (files.some(f => f.type !== 'image/png')) {
         alert('Only PNG images are allowed!');
-        fileInput.value = '';
+        e.target.value = '';
         return;
       }
 
@@ -439,47 +477,57 @@ function initAdminLobby() {
         selected = selected.slice(0, 5);
       }
 
-      Promise.all(selected.map(file => {
+      const imageDataUrls = await Promise.all(selected.map(file => {
         return new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (ev) => {
             const img = new Image();
-            img.onload = () => {
-              resolve(resizeImage(img, 600));
-            };
+            img.onload = () => resolve(resizeImage(img, 600));
             img.src = ev.target.result;
           };
           reader.readAsDataURL(file);
         });
-      })).then((imageDataUrls) => {
-        uploadedImages = imageDataUrls;
-        socket.emit('set-images', { roomCode, images: imageDataUrls });
+      }));
+
+      uploadedImages = imageDataUrls;
+      try {
+        await api('POST', 'set-images', { roomCode, adminToken, images: imageDataUrls });
         showImageThumbs(imageDataUrls);
-      });
+      } catch (err) {
+        alert(err.message);
+      }
     };
   }
 
-  const timerSlider = $('timer-slider');
-  const timerValue = $('timer-value');
-  timerSlider.oninput = () => {
-    const val = timerSlider.value;
-    timerValue.textContent = `${val}s`;
-    socket.emit('set-timer', { roomCode, timeLimit: parseInt(val) });
+  $('timer-slider').oninput = () => {
+    const val = $('timer-slider').value;
+    $('timer-value').textContent = `${val}s`;
+    api('POST', 'set-timer', { roomCode, adminToken, timeLimit: parseInt(val) }).catch(() => {});
   };
 
-  $('btn-start').onclick = () => {
+  $('btn-start').onclick = async () => {
     $('btn-start').disabled = true;
-    socket.emit('start-game', { roomCode });
+    try {
+      const data = await api('POST', 'start-game', { roomCode, adminToken });
+      gameActive = true;
+      showView('admin-playing');
+      $('admin-timer').textContent = data.timeLimit;
+      $('admin-timer').className = 'timer';
+    } catch (err) {
+      alert(err.message);
+      $('btn-start').disabled = false;
+    }
   };
 
-  $('btn-finish-game').onclick = () => {
-    socket.emit('finish-game', { roomCode });
+  $('btn-finish-game').onclick = async () => {
+    try {
+      await api('POST', 'finish-game', { roomCode, adminToken });
+    } catch {}
   };
 }
 
 function showImageThumbs(imageDataUrls) {
   const thumbsEl = $('image-thumbs');
-  const countEl = $('image-count');
   thumbsEl.innerHTML = '';
   imageDataUrls.forEach(url => {
     const img = document.createElement('img');
@@ -487,8 +535,8 @@ function showImageThumbs(imageDataUrls) {
     img.src = url;
     thumbsEl.appendChild(img);
   });
-  countEl.textContent = `📸 ${imageDataUrls.length}/5 images loaded`;
-  document.getElementById('image-upload').classList.add('has-image');
+  $('image-count').textContent = `\u{1F4F8} ${imageDataUrls.length}/5 images loaded`;
+  $('image-upload').classList.add('has-image');
 }
 
 function updatePlayerList(players) {
@@ -506,38 +554,31 @@ function updatePlayerList(players) {
   });
 }
 
-// ============================================
-//  PLAYER WAITING
-// ============================================
+function updateAdminProgress(players) {
+  const rows = $('admin-player-rows');
+  if (!rows) return;
+  rows.innerHTML = '';
+  players.forEach((p, i) => {
+    const pct = Math.round(p.progress * 100);
+    const row = document.createElement('div');
+    row.className = 'admin-player-row';
+    row.innerHTML = `
+      <span class="admin-player-name">${p.name}</span>
+      <div class="admin-player-bar">
+        <div class="admin-player-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="admin-player-pct">${pct}%</span>
+    `;
+    rows.appendChild(row);
+  });
+}
+
 function showPlayerWaiting() {
   showView('player-waiting');
   $('waiting-code').textContent = roomCode;
   $('waiting-name').textContent = playerName;
 }
 
-// ============================================
-//  GAME START
-// ============================================
-function startGame(timeLimit, imageData) {
-  gameActive = true;
-
-  if (!isAdmin) {
-    showView('game');
-    initScratch(imageData);
-    $('game-timer').textContent = timeLimit;
-    $('game-timer').className = 'timer';
-    $('progress-fill').style.width = '0%';
-    $('progress-label').textContent = '✨ 0%';
-  } else {
-    showView('admin-playing');
-    $('admin-timer').textContent = timeLimit;
-    $('admin-timer').className = 'timer';
-  }
-}
-
-// ============================================
-//  SCRATCH INIT
-// ============================================
 function initScratch(imageData) {
   if (scratchEngine) {
     scratchEngine.destroy();
@@ -551,20 +592,12 @@ function initScratch(imageData) {
   }
 
   scratchEngine = new ScratchEngine('baseCanvas', 'scratchCanvas', imageData);
-  scratchEngine.onRevealed = () => {
-    if (socket && roomCode) {
-      socket.emit('swipe-stroke', { roomCode, strokePoints: [{ x: 0, y: 0 }] });
-    }
-  };
 
   scratchEngine.flushInterval = setInterval(() => {
     scratchEngine.flush();
   }, 250);
 }
 
-// ============================================
-//  GAME UPDATES
-// ============================================
 function updateTimer(remaining) {
   const timerEl = isAdmin ? $('admin-timer') : $('game-timer');
   if (!timerEl) return;
@@ -574,20 +607,9 @@ function updateTimer(remaining) {
   else if (remaining <= 10) timerEl.classList.add('warn');
 }
 
-function updateProgress(progress) {
-  const pct = Math.round(progress * 100);
-  const fill = $('progress-fill');
-  const label = $('progress-label');
-  if (fill) fill.style.width = `${Math.min(pct, 100)}%`;
-  if (label) label.textContent = `✨ ${pct}%`;
-  if (scratchEngine) scratchEngine.progress = progress;
-}
-
-// ============================================
-//  GAME END
-// ============================================
 function endGame(results) {
   gameActive = false;
+  stopPolling();
   if (scratchEngine) {
     scratchEngine.flush();
   }
@@ -621,7 +643,7 @@ function showPodium(results) {
   results.forEach((r, i) => {
     const row = document.createElement('div');
     row.className = 'result-row';
-    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : `${i + 1}.`;
     row.innerHTML = `
       <span class="result-rank">${medal}</span>
       <span class="result-name">${r.name}</span>
@@ -634,11 +656,10 @@ function showPodium(results) {
   });
 }
 
-// ============================================
-//  RESET
-// ============================================
 function resetForNewGame() {
   gameActive = false;
+  lastEventId = 0;
+  startPolling();
   if (isAdmin) {
     showView('admin-lobby');
     $('btn-start').disabled = false;
@@ -651,6 +672,7 @@ function resetForNewGame() {
 }
 
 function resetToHome() {
+  stopPolling();
   if (scratchEngine) {
     scratchEngine.destroy();
     scratchEngine = null;
@@ -662,31 +684,23 @@ function resetToHome() {
   roomCode = null;
   playerId = null;
   playerName = null;
+  adminToken = null;
+  lastEventId = 0;
   initHome();
 }
 
-// ============================================
-//  INIT
-// ============================================
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   $('theme-toggle').onclick = toggleTheme;
-  connectSocket();
   initHome();
 
-  $('btn-play-again').onclick = () => {
-    socket.emit('play-again', { roomCode });
+  $('btn-play-again').onclick = async () => {
+    try {
+      await api('POST', 'play-again', { roomCode, adminToken });
+    } catch {}
   };
 
   $('btn-home').onclick = () => {
-    if (scratchEngine) {
-      scratchEngine.destroy();
-      scratchEngine = null;
-    }
-    _adminInitialized = false;
-    uploadedImages = [];
-    if (socket) socket.close();
-    connectSocket();
-    initHome();
+    resetToHome();
   };
 });
