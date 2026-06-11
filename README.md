@@ -47,9 +47,11 @@ vercel
 
 The API uses HTTP polling instead of WebSocket, so it can run in Vercel's serverless environment.
 
-### Important: Set up Vercel KV for room state
+### Important: use shared storage for Vercel room state
 
-Without KV, Vercel serverless functions can lose or split room state across cold starts and instances. This is most visible when multiple players join, images are uploaded, and the host starts the game. Create a KV database:
+Vercel serverless functions do not guarantee that every request uses the same warm instance. If room state is only stored in memory, the host can create a room on one instance and then hit another instance during image upload or start, causing `Unauthorized` or `Room not found`.
+
+The simplest option is Vercel KV:
 
 1. Go to **Vercel Dashboard → Storage** for your project
 2. Click **"Create Database"** → select **"Vercel KV"**
@@ -62,13 +64,22 @@ npx vercel deploy --prod --yes
 
 The KV store keeps rooms alive across cold starts and serverless instances. Without it, the game uses in-memory fallback (works for single-instance sessions).
 
+You do not have to use Redis/KV specifically, but multiplayer on Vercel still needs shared storage. Practical alternatives:
+
+1. **Postgres** via Vercel Postgres, Neon, Supabase, or Railway.
+2. **Firebase/Firestore** for document-style room state.
+3. **A persistent Node host** such as Railway, Render, Fly.io, or a VPS, where one Node process can keep in-memory room state and optionally use WebSocket.
+
+Vercel Blob/object storage is not recommended for this game state because players update progress frequently and object writes are not a good fit for low-latency mutable room data.
+
 ### Troubleshooting: Start Game stays disabled
 
 The host can start only after at least one PNG upload is successfully saved by the API. If the button stays disabled:
 
 1. Confirm the upload uses PNG files and no more than 5 images.
 2. Check that the `set-images` request returns success in the browser Network tab.
-3. On Vercel, confirm KV environment variables are attached to the deployment and redeploy after creating KV.
+3. Call `/api/health`. `durableStorage` should be `true` on Vercel for reliable multiplayer.
+4. On Vercel, confirm KV environment variables are attached to the deployment and redeploy after creating KV.
 
 ## Tech Stack
 

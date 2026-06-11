@@ -4,7 +4,7 @@ const ROOM_TTL = 7200;
 
 let kv;
 try {
-  if (process.env.KV_URL) {
+  if (process.env.KV_URL || process.env.KV_REST_API_URL) {
     kv = require('@vercel/kv').kv;
   }
 } catch {}
@@ -48,6 +48,10 @@ class RoomStore {
   async getAll() {
     if (this._cache.size > 0) return this._cache;
     return this._cache;
+  }
+
+  hasDurableStorage() {
+    return Boolean(kv);
   }
 
   _serialize(room) {

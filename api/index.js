@@ -20,8 +20,15 @@ async function ensureRoom(code) {
 async function persistRoom(code) {
   const room = gameManager.getRoom(code);
   if (room) {
-    roomStore.save(code, room).catch(() => {});
+    await roomStore.save(code, room);
   }
+}
+
+function authError(room) {
+  if (!room && process.env.VERCEL && !roomStore.hasDurableStorage()) {
+    return 'Room state is not available on this Vercel instance. Configure shared storage such as Vercel KV, Postgres, Supabase, or run the app on a single persistent Node server.';
+  }
+  return 'Unauthorized';
 }
 
 setInterval(() => gameManager.cleanupOldRooms(), 1800000);
@@ -106,7 +113,7 @@ async function handler(req, res) {
       case 'set-images': {
         const { roomCode, adminToken, images } = body;
         const room = await ensureRoom(roomCode);
-        if (!room || room.adminToken !== adminToken) return send(res, { error: 'Unauthorized' }, 403);
+        if (!room || room.adminToken !== adminToken) return send(res, { error: authError(room) }, 403);
         if (!Array.isArray(images) || images.length === 0 || images.length > 5) {
           return send(res, { error: 'Invalid images' }, 400);
         }
@@ -118,7 +125,7 @@ async function handler(req, res) {
       case 'set-timer': {
         const { roomCode, adminToken, timeLimit } = body;
         const room = await ensureRoom(roomCode);
-        if (!room || room.adminToken !== adminToken) return send(res, { error: 'Unauthorized' }, 403);
+        if (!room || room.adminToken !== adminToken) return send(res, { error: authError(room) }, 403);
         gameManager.setTimer(roomCode, timeLimit);
         await persistRoom(roomCode);
         return send(res, { success: true });
@@ -127,7 +134,7 @@ async function handler(req, res) {
       case 'start-game': {
         const { roomCode, adminToken } = body;
         const room = await ensureRoom(roomCode);
-        if (!room || room.adminToken !== adminToken) return send(res, { error: 'Unauthorized' }, 403);
+        if (!room || room.adminToken !== adminToken) return send(res, { error: authError(room) }, 403);
         const result = gameManager.startGame(roomCode);
         if (result.error) return send(res, { error: result.error }, 400);
         await persistRoom(roomCode);
@@ -154,7 +161,7 @@ async function handler(req, res) {
       case 'finish-game': {
         const { roomCode, adminToken } = body;
         const room = await ensureRoom(roomCode);
-        if (!room || room.adminToken !== adminToken) return send(res, { error: 'Unauthorized' }, 403);
+        if (!room || room.adminToken !== adminToken) return send(res, { error: authError(room) }, 403);
         const results = gameManager.finishGameEarly(roomCode);
         if (results) await persistRoom(roomCode);
         return send(res, { results });
@@ -163,7 +170,7 @@ async function handler(req, res) {
       case 'play-again': {
         const { roomCode, adminToken } = body;
         const room = await ensureRoom(roomCode);
-        if (!room || room.adminToken !== adminToken) return send(res, { error: 'Unauthorized' }, 403);
+        if (!room || room.adminToken !== adminToken) return send(res, { error: authError(room) }, 403);
         gameManager.resetRoom(roomCode);
         await persistRoom(roomCode);
         return send(res, { success: true });
@@ -193,7 +200,7 @@ async function handler(req, res) {
       }
 
       case 'health': {
-        return send(res, { ok: true, rooms: gameManager.rooms.size });
+        return send(res, { ok: true, rooms: gameManager.rooms.size, durableStorage: roomStore.hasDurableStorage() });
       }
 
       default:
