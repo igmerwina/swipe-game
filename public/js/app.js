@@ -46,6 +46,7 @@ let _adminInitialized = false;
 let uploadedImages = [];
 
 const API_BASE = window.__SWIPE_API__ || '/api';
+const isAdminRoute = () => window.location.pathname.replace(/\/$/, '') === '/admin';
 
 function showView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -406,9 +407,24 @@ function initHome() {
   adminToken = null;
   lastEventId = 0;
 
+  initJoinForm();
+}
+
+function initAdminEntry() {
+  showView('admin-entry');
+  stopPolling();
+  gameActive = false;
+  isAdmin = false;
+  roomCode = null;
+  playerId = null;
+  playerName = null;
+  adminToken = null;
+  lastEventId = 0;
+
   $('btn-create').onclick = async () => {
+    const password = $('input-admin-password').value;
     try {
-      const data = await api('POST', 'create-room');
+      const data = await api('POST', 'create-room', { password });
       roomCode = data.roomCode;
       adminToken = data.adminToken;
       isAdmin = true;
@@ -421,6 +437,10 @@ function initHome() {
     }
   };
 
+  $('input-admin-password').onkeydown = (e) => { if (e.key === 'Enter') $('btn-create').click(); };
+}
+
+function initJoinForm() {
   $('btn-join').onclick = async () => {
     const code = $('input-code').value.trim().toUpperCase();
     const name = $('input-name').value.trim();
@@ -695,13 +715,15 @@ function resetToHome() {
   playerName = null;
   adminToken = null;
   lastEventId = 0;
-  initHome();
+  if (isAdminRoute()) initAdminEntry();
+  else initHome();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   $('theme-toggle').onclick = toggleTheme;
-  initHome();
+  if (isAdminRoute()) initAdminEntry();
+  else initHome();
 
   $('btn-play-again').onclick = async () => {
     try {

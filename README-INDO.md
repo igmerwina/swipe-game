@@ -23,8 +23,8 @@ Dibuat dengan **Node.js + Express** dan frontend vanilla HTML/CSS/JS. Tidak ada 
 
 ## Cara Main
 
-1. **Host** membuat room, upload gambar, lalu membagikan kode 4 huruf.
-2. **Pemain** masuk dengan nickname.
+1. **Host** membuka `/admin`, memasukkan kata sandi create room, upload gambar, lalu membagikan kode 4 huruf.
+2. **Pemain** membuka `/` dan masuk dengan nickname.
 3. **Host** memulai game; setiap pemain melihat gambar blur.
 4. **Swipe** untuk menghapus blur dan membuka gambar.
 5. **Pertama mencapai 95%** menang. Hasil tampil di podium dengan confetti.
@@ -33,7 +33,9 @@ Dibuat dengan **Node.js + Express** dan frontend vanilla HTML/CSS/JS. Tidak ada 
 
 ```mermaid
 flowchart TD
-  Host["Browser host"] -->|POST /api/create-room| API["Vercel API handler"]
+  Landing["Landing page /"] --> Players["Browser pemain"]
+  AdminPage["Admin page /admin"] --> Host["Browser host"]
+  Host -->|POST /api/create-room + password| API["Vercel API handler"]
   API -->|Buat room + admin token| Store["Room store"]
   Store -->|Supabase / Vercel KV / memory| API
   API -->|Kode room + admin token| Host
@@ -66,6 +68,8 @@ npm start
 Buka `http://localhost:3000` di HP atau desktop.
 
 Untuk test Supabase lokal, copy `.env.example` menjadi `.env`, lalu isi nilai Supabase kamu. Simpan `.env` hanya di lokal; file itu sudah di-ignore oleh Git.
+
+Untuk membatasi siapa yang bisa membuat room, set `CREATE_ROOM_PASSWORD`. Landing page di `/` hanya untuk pemain; host membuat room dari `/admin`.
 
 ## Deploy ke Vercel
 
@@ -109,6 +113,7 @@ create table if not exists rooms (
 Lalu tambahkan Vercel Environment Variables:
 
 ```sh
+CREATE_ROOM_PASSWORD=your-admin-password
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 ```

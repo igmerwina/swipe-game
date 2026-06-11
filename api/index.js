@@ -4,6 +4,7 @@ require('../server/db');
 
 const gameManager = new GameManager();
 const DISCONNECT_TIMEOUT = 30000;
+const CREATE_ROOM_PASSWORD = process.env.CREATE_ROOM_PASSWORD || '';
 
 async function ensureRoom(code) {
   let room = gameManager.getRoom(code);
@@ -92,6 +93,9 @@ async function handler(req, res) {
   try {
     switch (path) {
       case 'create-room': {
+        if (CREATE_ROOM_PASSWORD && body.password !== CREATE_ROOM_PASSWORD) {
+          return send(res, { error: 'Invalid create room password' }, 403);
+        }
         const { code, adminToken } = gameManager.createRoom();
         await persistRoom(code);
         return send(res, { roomCode: code, adminToken });

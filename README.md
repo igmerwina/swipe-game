@@ -23,8 +23,8 @@ Built with **Node.js + Express** and a vanilla HTML/CSS/JS frontend. It has no b
 
 ## How to Play
 
-1. **Host** creates a room, uploads images, and shares the 4-letter code
-2. **Players** join with a nickname
+1. **Host** opens `/admin`, enters the create room password, uploads images, and shares the 4-letter code
+2. **Players** open `/` and join with a nickname
 3. **Host** starts the game — each player sees a blurred image
 4. **Swipe** to scratch off the blur and reveal the image
 5. **First to 95%** wins! Results show on a podium with confetti 🎉
@@ -33,7 +33,9 @@ Built with **Node.js + Express** and a vanilla HTML/CSS/JS frontend. It has no b
 
 ```mermaid
 flowchart TD
-  Host["Host browser"] -->|POST /api/create-room| API["Vercel API handler"]
+  Landing["Landing page /"] --> Players["Player browsers"]
+  AdminPage["Admin page /admin"] --> Host["Host browser"]
+  Host -->|POST /api/create-room + password| API["Vercel API handler"]
   API -->|Create room + admin token| Store["Room store"]
   Store -->|Supabase / Vercel KV / memory| API
   API -->|Room code + admin token| Host
@@ -66,6 +68,8 @@ npm start
 Open `http://localhost:3000` on your phone or desktop.
 
 For local Supabase testing, copy `.env.example` to `.env` and fill in your Supabase values. Keep `.env` local only; it is ignored by Git.
+
+To protect room creation, set `CREATE_ROOM_PASSWORD`. The landing page at `/` is player-only; hosts create rooms from `/admin`.
 
 ## Deploy on Vercel
 
@@ -109,6 +113,7 @@ create table if not exists rooms (
 Then add these Vercel Environment Variables:
 
 ```sh
+CREATE_ROOM_PASSWORD=your-admin-password
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 ```
