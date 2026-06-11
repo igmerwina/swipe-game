@@ -200,7 +200,12 @@ async function handler(req, res) {
       }
 
       case 'health': {
-        return send(res, { ok: true, rooms: gameManager.rooms.size, durableStorage: roomStore.hasDurableStorage() });
+        return send(res, {
+          ok: true,
+          rooms: gameManager.rooms.size,
+          durableStorage: roomStore.hasDurableStorage(),
+          storageProvider: roomStore.storageProvider(),
+        });
       }
 
       default:

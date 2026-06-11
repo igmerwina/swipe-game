@@ -1,6 +1,9 @@
 const crypto = require('crypto');
 
 const ROOM_TTL = 7200;
+const SUPABASE_TABLE = process.env.SUPABASE_ROOMS_TABLE || 'rooms';
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 
 let kv;
 try {
@@ -8,6 +11,8 @@ try {
     kv = require('@vercel/kv').kv;
   }
 } catch {}
+
+const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
 class RoomStore {
   constructor() {
@@ -20,8 +25,21 @@ class RoomStore {
 
   async save(code, roomData) {
     this._cache.set(code, roomData);
+    const serialized = this._serialize(roomData);
+    if (hasSupabase) {
+      await this._supabaseRequest('', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          code,
+          data: serialized,
+          updated_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + ROOM_TTL * 1000).toISOString(),
+        }),
+      });
+      return;
+    }
     if (kv) {
-      const serialized = this._serialize(roomData);
       await kv.set(this._key(code), serialized, { ex: ROOM_TTL });
     }
   }
@@ -29,6 +47,14 @@ class RoomStore {
   async load(code) {
     const cached = this._cache.get(code);
     if (cached) return cached;
+    if (hasSupabase) {
+      const rows = await this._supabaseRequest(`?code=eq.${encodeURIComponent(code)}&select=data&limit=1`);
+      if (rows && rows[0] && rows[0].data) {
+        const room = this._deserialize(rows[0].data);
+        this._cache.set(code, room);
+        return room;
+      }
+    }
     if (kv) {
       const raw = await kv.get(this._key(code));
       if (raw) {
@@ -42,6 +68,10 @@ class RoomStore {
 
   async delete(code) {
     this._cache.delete(code);
+    if (hasSupabase) {
+      await this._supabaseRequest(`?code=eq.${encodeURIComponent(code)}`, { method: 'DELETE' });
+      return;
+    }
     if (kv) await kv.del(this._key(code));
   }
 
@@ -51,7 +81,34 @@ class RoomStore {
   }
 
   hasDurableStorage() {
-    return Boolean(kv);
+    return hasSupabase || Boolean(kv);
+  }
+
+  storageProvider() {
+    if (hasSupabase) return 'supabase';
+    if (kv) return 'vercel-kv';
+    return 'memory';
+  }
+
+  async _supabaseRequest(query = '', options = {}) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}${query}`, {
+      method: options.method || 'GET',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      body: options.body,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Supabase room store failed: ${res.status} ${text}`);
+    }
+
+    if (res.status === 204) return null;
+    return res.json();
   }
 
   _serialize(room) {

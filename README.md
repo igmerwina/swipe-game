@@ -19,7 +19,7 @@ Built with **Node.js + Express** and a vanilla HTML/CSS/JS frontend. It has no b
 - 🏆 **Winner detection** — first player to 95% wins; top 3 shown on a podium
 - 🌓 **Light/dark theme** — toggled with a button, saved to localStorage
 - 📱 **Mobile-first** — responsive UI with bouncy animations and confetti
-- ☁️ **Vercel-ready** — polling-based API works on serverless; Vercel KV is recommended for multiplayer rooms
+- ☁️ **Vercel-ready** — polling-based API works on serverless; Supabase or Vercel KV can store multiplayer rooms
 
 ## How to Play
 
@@ -51,7 +51,7 @@ The API uses HTTP polling instead of WebSocket, so it can run in Vercel's server
 
 Vercel serverless functions do not guarantee that every request uses the same warm instance. If room state is only stored in memory, the host can create a room on one instance and then hit another instance during image upload or start, causing `Unauthorized` or `Room not found`.
 
-The simplest option is Vercel KV:
+One simple option is Vercel KV:
 
 1. Go to **Vercel Dashboard → Storage** for your project
 2. Click **"Create Database"** → select **"Vercel KV"**
@@ -62,7 +62,51 @@ The simplest option is Vercel KV:
 npx vercel deploy --prod --yes
 ```
 
-The KV store keeps rooms alive across cold starts and serverless instances. Without it, the game uses in-memory fallback (works for single-instance sessions).
+The KV store keeps rooms alive across cold starts and serverless instances.
+
+### Supabase setup
+
+Supabase also works well for room state. Create this table in the Supabase SQL Editor:
+
+```sql
+create table if not exists rooms (
+  code text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+```
+
+Then add these Vercel Environment Variables:
+
+```sh
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
+```
+
+Optional, only if your table name is not `rooms`:
+
+```sh
+SUPABASE_ROOMS_TABLE=rooms
+```
+
+Where to find the values:
+
+1. Open **Supabase Dashboard → Project Settings → API**.
+2. Copy the **Project URL** into `SUPABASE_URL`.
+3. Copy a server-side secret key into `SUPABASE_SERVICE_ROLE_KEY`. Do not use this key in frontend code.
+4. In Vercel, open **Project → Settings → Environment Variables**, add the values for Production, then redeploy.
+
+After deploy, open `/api/health`. It should show:
+
+```json
+{
+  "durableStorage": true,
+  "storageProvider": "supabase"
+}
+```
+
+Without shared storage, the game uses in-memory fallback only, which works locally but is not reliable for multiplayer on Vercel.
 
 You do not have to use Redis/KV specifically, but multiplayer on Vercel still needs shared storage. Practical alternatives:
 
@@ -79,11 +123,11 @@ The host can start only after at least one PNG upload is successfully saved by t
 1. Confirm the upload uses PNG files and no more than 5 images.
 2. Check that the `set-images` request returns success in the browser Network tab.
 3. Call `/api/health`. `durableStorage` should be `true` on Vercel for reliable multiplayer.
-4. On Vercel, confirm KV environment variables are attached to the deployment and redeploy after creating KV.
+4. Confirm Supabase or KV environment variables are attached to the deployment and redeploy after adding them.
 
 ## Tech Stack
 
 - **Backend:** Node.js, Express-style serverless handler
 - **Frontend:** Vanilla HTML/CSS/JS (no frameworks or build tools)
 - **Realtime:** HTTP polling
-- **Persistence:** Vercel KV when configured; in-memory fallback locally or without KV
+- **Persistence:** Supabase or Vercel KV when configured; in-memory fallback locally
