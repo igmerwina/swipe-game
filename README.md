@@ -1,8 +1,8 @@
-# SwipeRush 🏁
+# SwipeRush
 
 A real-time mobile web game where players race to **swipe-reveal** a blurred image. First to 95% wins!
 
-Built with **Node.js + Express** — zero build step, vanilla HTML/CSS/JS frontend.
+Built with **Node.js + Express** and a vanilla HTML/CSS/JS frontend. It has no build step and can run locally or on Vercel.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ Built with **Node.js + Express** — zero build step, vanilla HTML/CSS/JS fronte
 - 🏆 **Winner detection** — first player to 95% wins; top 3 shown on a podium
 - 🌓 **Light/dark theme** — toggled with a button, saved to localStorage
 - 📱 **Mobile-first** — responsive UI with bouncy animations and confetti
-- ☁️ **Vercel-ready** — polling-based API works on serverless, no WebSocket needed
+- ☁️ **Vercel-ready** — polling-based API works on serverless; Vercel KV is recommended for multiplayer rooms
 
 ## How to Play
 
@@ -38,18 +38,18 @@ npm start
 
 Open `http://localhost:3000` on your phone or desktop.
 
-## Deploy on Vercel (full app)
+## Deploy on Vercel
 
 ```sh
 npm i -g vercel
 vercel
 ```
 
-The API uses HTTP polling instead of WebSocket, so it works in Vercel's serverless environment.
+The API uses HTTP polling instead of WebSocket, so it can run in Vercel's serverless environment.
 
-### ⚠️ Important: Set up Vercel KV for persistent state
+### Important: Set up Vercel KV for room state
 
-Without KV, serverless functions may lose game state on cold start. Create a KV database:
+Without KV, Vercel serverless functions can lose or split room state across cold starts and instances. This is most visible when multiple players join, images are uploaded, and the host starts the game. Create a KV database:
 
 1. Go to **Vercel Dashboard → Storage** for your project
 2. Click **"Create Database"** → select **"Vercel KV"**
@@ -62,8 +62,17 @@ npx vercel deploy --prod --yes
 
 The KV store keeps rooms alive across cold starts and serverless instances. Without it, the game uses in-memory fallback (works for single-instance sessions).
 
+### Troubleshooting: Start Game stays disabled
+
+The host can start only after at least one PNG upload is successfully saved by the API. If the button stays disabled:
+
+1. Confirm the upload uses PNG files and no more than 5 images.
+2. Check that the `set-images` request returns success in the browser Network tab.
+3. On Vercel, confirm KV environment variables are attached to the deployment and redeploy after creating KV.
+
 ## Tech Stack
 
-- **Backend:** Node.js, Express, Socket.IO
+- **Backend:** Node.js, Express-style serverless handler
 - **Frontend:** Vanilla HTML/CSS/JS (no frameworks or build tools)
-- **Persistence:** JSON file (best-effort; in-memory fallback on read-only filesystems)
+- **Realtime:** HTTP polling
+- **Persistence:** Vercel KV when configured; in-memory fallback locally or without KV

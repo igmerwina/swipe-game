@@ -453,8 +453,8 @@ function initAdminLobby() {
 
   if (uploadedImages.length > 0) {
     showImageThumbs(uploadedImages);
-    $('btn-start').disabled = false;
   }
+  syncStartButton();
 
   if (!_adminInitialized) {
     _adminInitialized = true;
@@ -464,10 +464,12 @@ function initAdminLobby() {
     $('image-input').onchange = async (e) => {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
+      syncStartButton(true);
 
       if (files.some(f => f.type !== 'image/png')) {
         alert('Only PNG images are allowed!');
         e.target.value = '';
+        syncStartButton();
         return;
       }
 
@@ -493,8 +495,11 @@ function initAdminLobby() {
       try {
         await api('POST', 'set-images', { roomCode, adminToken, images: imageDataUrls });
         showImageThumbs(imageDataUrls);
+        syncStartButton();
       } catch (err) {
         alert(err.message);
+        uploadedImages = [];
+        syncStartButton();
       }
     };
   }
@@ -524,6 +529,10 @@ function initAdminLobby() {
       await api('POST', 'finish-game', { roomCode, adminToken });
     } catch {}
   };
+}
+
+function syncStartButton(forceDisabled = false) {
+  $('btn-start').disabled = forceDisabled || uploadedImages.length === 0;
 }
 
 function showImageThumbs(imageDataUrls) {
@@ -662,10 +671,10 @@ function resetForNewGame() {
   startPolling();
   if (isAdmin) {
     showView('admin-lobby');
-    $('btn-start').disabled = false;
     if (uploadedImages.length > 0) {
       showImageThumbs(uploadedImages);
     }
+    syncStartButton();
   } else {
     showPlayerWaiting();
   }
