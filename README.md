@@ -2,7 +2,7 @@
 
 A real-time mobile web game where players race to **swipe-reveal** a blurred image. First to 95% wins!
 
-Built with **Node.js + Express + Socket.IO** — zero build step, vanilla HTML/CSS/JS frontend.
+Built with **Node.js + Express** — zero build step, vanilla HTML/CSS/JS frontend.
 
 ## Screenshots
 
@@ -45,13 +45,22 @@ npm i -g vercel
 vercel
 ```
 
-The API uses HTTP polling instead of WebSocket, so it works in Vercel's serverless environment. State is kept in-memory (per instance), which works fine for party games where all players join the same session.
+The API uses HTTP polling instead of WebSocket, so it works in Vercel's serverless environment.
 
-To connect from a custom domain or set the API path, add to `index.html`:
+### ⚠️ Important: Set up Vercel KV for persistent state
 
-```html
-<script>window.__SWIPE_API__ = '/api';</script>
+Without KV, serverless functions may lose game state on cold start. Create a KV database:
+
+1. Go to **Vercel Dashboard → Storage** for your project
+2. Click **"Create Database"** → select **"Vercel KV"**
+3. Choose the region closest to your players (e.g., Singapore for Asia)
+4. The environment variables are auto-linked — redeploy:
+
+```sh
+npx vercel deploy --prod --yes
 ```
+
+The KV store keeps rooms alive across cold starts and serverless instances. Without it, the game uses in-memory fallback (works for single-instance sessions).
 
 ## Tech Stack
 
