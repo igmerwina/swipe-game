@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 
 const DATA_FILE = path.join(__dirname, '..', 'data', 'games.json');
 const dir = path.dirname(DATA_FILE);
